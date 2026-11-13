@@ -383,7 +383,14 @@ $("formAdd").addEventListener("submit", async e => {
   const desc = $("descricao").value.trim();
   // uma linha por parcela, no mesmo dia dos meses seguintes (ajustado ao tamanho do mês)
   const n = Math.min(Math.max(parseInt($("parcelas").value, 10) || 1, 1), 48);
-  const base = new Date(), grupo = n > 1 ? "g" + Date.now().toString(36) : undefined, itens = [];
+  // mês da fatura em que a compra será lançada: o mês que está sendo visualizado (permite lançamento retroativo)
+  const chave = viewKey || faturaKey(new Date());
+  const [ano, mes] = chave.split("-").map(Number);
+  // base no mês visualizado; usa o dia de hoje se ele cair na mesma fatura, senão o dia 1
+  const agora = new Date();
+  let base = new Date(ano, mes - 1, agora.getDate(), agora.getHours(), agora.getMinutes(), agora.getSeconds());
+  if (faturaKey(base) !== chave) base = new Date(ano, mes - 1, 1, agora.getHours(), agora.getMinutes(), agora.getSeconds());
+  const grupo = n > 1 ? "g" + Date.now().toString(36) : undefined, itens = [];
   for (let i = 0; i < n; i++) {
     const d = new Date(base.getFullYear(), base.getMonth() + i, 1, base.getHours(), base.getMinutes(), base.getSeconds());
     d.setDate(Math.min(base.getDate(), new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()));
@@ -393,7 +400,7 @@ $("formAdd").addEventListener("submit", async e => {
   }
   await Store.add(itens);
   $("valor").value = ""; $("descricao").value = ""; $("parcelas").value = "1"; atualizaParc();
-  setView(faturaKey(new Date())); // compra nova sempre cai no mês atual
+  setView(chave); // permanece no mês visualizado
 });
 $("formMeta").addEventListener("submit", async e => {
   e.preventDefault();
