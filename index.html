@@ -93,6 +93,7 @@ button { font: inherit; cursor: pointer; border: 0; border-radius: 10px; }
 .chart { width: 100%; height: auto; display: block; }
 .chart text { font-family: var(--font-body); font-size: 10px; fill: var(--muted); }
 .chart .val { fill: var(--fg); font-weight: 600; }
+.chart .sval { font-size: 8px; }
 .chart .grid { stroke: var(--line); stroke-width: 1; }
 
 /* lista */
@@ -305,6 +306,14 @@ async function render() {
   desenhaLista(lancs, chave);
 }
 
+// rótulo curto para caber sobre a barra: 970 -> "970" · 1.240 -> "1,2 mil" · 12.400 -> "12 mil" · 1.240.000 -> "1,2 mi"
+function formataCurto(v) {
+  if (v >= 1000000) return (v / 1000000).toFixed(1).replace(".", ",") + " mi";
+  if (v >= 10000) return Math.round(v / 1000) + " mil";
+  if (v >= 1000) return (v / 1000).toFixed(1).replace(".", ",") + " mil";
+  return String(Math.round(v));
+}
+
 function desenhaGrafico(porMes, ano, sel) {
   // janeiro a dezembro do ano visualizado
   const meses = [];
@@ -321,9 +330,9 @@ function desenhaGrafico(porMes, ano, sel) {
     const bh = x.v > 0 ? Math.max(h * x.v / max, 2) : 0, cx = i * slot + slot / 2;
     if (bh) s += '<rect x="' + (cx - bw / 2).toFixed(1) + '" y="' + (base - bh).toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + bh.toFixed(1) + '" rx="3" fill="' + (x.atual ? "var(--bar-now)" : "var(--bar)") + '"/>';
     s += '<text x="' + cx.toFixed(1) + '" y="' + (base + 16) + '" text-anchor="middle"' + (x.atual ? ' class="val"' : "") + ">" + MESES[x.m] + "</text>";
-    if (x.v > 0 && (x.atual || x.v === max)) {
-      const t = x.v >= 1000 ? (x.v / 1000).toFixed(1).replace(".", ",") + " mil" : Math.round(x.v);
-      s += '<text class="val" x="' + Math.min(Math.max(cx, 18), W - 18).toFixed(1) + '" y="' + (base - bh - 6).toFixed(1) + '" text-anchor="middle">' + t + "</text>";
+    if (x.v > 0) {
+      const t = formataCurto(x.v);
+      s += '<text class="val sval" x="' + Math.min(Math.max(cx, 16), W - 16).toFixed(1) + '" y="' + (base - bh - 6).toFixed(1) + '" text-anchor="middle">' + t + "</text>";
     }
   });
   $("chart").innerHTML = s;
