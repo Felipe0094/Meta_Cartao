@@ -1,0 +1,431 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Meta Cartão</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Controle de gastos do cartão de crédito">
+<meta name="theme-color" content="#0f6b57" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0e1513" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icone.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icone-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Meta Cartão">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap">
+<style>
+/* Layout: uma coluna estreita (mobile first): fatura > lançar > meta > gráfico > lista */
+:root {
+  --bg: #f3f5f4;
+  --surface: #ffffff;
+  --fg: #14201c;
+  --muted: #62716b;
+  --line: #dbe2df;
+  --accent: #0f6b57;
+  --accent-fg: #ffffff;
+  --bar: #b9c9c3;
+  --bar-now: #0f6b57;
+  --danger: #b42318;
+  --font-display: "Space Grotesk", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1513; --surface: #16201d; --fg: #e8efec; --muted: #93a39c; --line: #26332f;
+    --accent: #3fbf9f; --accent-fg: #06251d; --bar: #35504a; --bar-now: #3fbf9f; --danger: #f97066;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1513; --surface: #16201d; --fg: #e8efec; --muted: #93a39c; --line: #26332f;
+  --accent: #3fbf9f; --accent-fg: #06251d; --bar: #35504a; --bar-now: #3fbf9f; --danger: #f97066;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.45;
+  padding-block: 20px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+main { max-width: 480px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+.label { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.num { font-variant-numeric: tabular-nums; }
+
+header { display: flex; flex-direction: column; gap: 4px; padding-top: 8px; }
+.nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.navbtn { width: 44px; height: 44px; background: var(--surface); color: var(--fg); border: 1px solid var(--line); font-size: 24px; line-height: 1; }
+.navbtn:disabled { opacity: .35; cursor: default; }
+.chart rect[data-k], .chart .hit { cursor: pointer; }
+.total { font-family: var(--font-display); font-weight: 700; font-size: clamp(40px, 13vw, 56px); line-height: 1.05; letter-spacing: -0.02em; }
+.sub { color: var(--muted); font-size: 13px; }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.row { display: flex; gap: 10px; }
+.row > * { min-width: 0; }
+input[type="text"] {
+  flex: 1; font: inherit; font-size: 18px; font-variant-numeric: tabular-nums; color: var(--fg);
+  background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 14px 14px; width: 100%;
+}
+input::placeholder { color: var(--muted); }
+.txt { font-size: 16px; }
+button { font: inherit; cursor: pointer; border: 0; border-radius: 10px; }
+.btn { background: var(--accent); color: var(--accent-fg); font-weight: 600; padding: 14px 20px; min-height: 52px; }
+.btn.ghost { background: transparent; color: var(--accent); border: 1px solid var(--line); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.prefix { position: relative; flex: 1; }
+.prefix span { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 18px; pointer-events: none; }
+.prefix input { padding-left: 44px; }
+
+/* meta */
+.meta-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.pct { font-family: var(--font-display); font-weight: 600; font-size: 22px; }
+.track { height: 16px; background: var(--bg); border: 1px solid var(--line); border-radius: 99px; overflow: hidden; }
+.fill { height: 100%; width: 0; border-radius: 99px; transition: width .4s ease, background-color .4s ease; }
+.warn { color: var(--danger); font-weight: 600; }
+.hint { color: var(--muted); font-size: 13px; }
+
+/* gráfico */
+.chart { width: 100%; height: auto; display: block; }
+.chart text { font-family: var(--font-body); font-size: 10px; fill: var(--muted); }
+.chart .val { fill: var(--fg); font-weight: 600; }
+.chart .grid { stroke: var(--line); stroke-width: 1; }
+
+/* lista */
+ul { list-style: none; margin: 0; padding: 0; }
+li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
+li:first-child { border-top: 0; }
+li .d { color: var(--muted); font-size: 13px; }
+li .v { font-weight: 600; }
+li .r { display: flex; align-items: center; gap: 12px; }
+li .info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+li .desc { font-weight: 600; overflow-wrap: anywhere; }
+.parc { align-items: center; flex-wrap: wrap; }
+.parc input { flex: none; width: 76px; text-align: center; padding: 10px; }
+.del { background: transparent; color: var(--muted); padding: 8px 10px; font-size: 13px; border: 1px solid var(--line); }
+.del.sure { color: var(--danger); border-color: var(--danger); font-weight: 600; }
+.empty { color: var(--muted); padding: 8px 0; }
+
+@media (prefers-reduced-motion: reduce) { .fill { transition: none; } }
+</style>
+</head>
+<body>
+
+<main>
+  <header>
+    <div class="nav">
+      <button type="button" class="navbtn" id="prev" aria-label="Mês anterior">‹</button>
+      <span class="label" id="mesLabel">Fatura atual</span>
+      <button type="button" class="navbtn" id="next" aria-label="Próximo mês">›</button>
+    </div>
+    <div class="total num" id="total">R$ 0,00</div>
+    <div class="sub" id="periodo"></div>
+  </header>
+
+  <form class="panel" id="formAdd" autocomplete="off">
+    <label class="label" for="valor">Nova compra</label>
+    <div class="row">
+      <div class="prefix"><span>R$</span><input type="text" id="valor" inputmode="decimal" placeholder="0,00" aria-label="Valor da compra"></div>
+      <button class="btn" type="submit">Adicionar</button>
+    </div>
+    <div class="row">
+      <input type="text" id="descricao" class="txt" placeholder="Identificação (ex.: Mercado, Farmácia)" aria-label="Identificação da compra" maxlength="60">
+    </div>
+    <div class="row parc">
+      <label class="label" for="parcelas">Parcelas</label>
+      <input type="text" id="parcelas" inputmode="numeric" value="1" aria-label="Número de parcelas">
+      <span class="hint num" id="parcInfo">Compra à vista. Para parcelar, informe o valor de cada parcela.</span>
+    </div>
+  </form>
+
+  <section class="panel" aria-labelledby="metaTitle">
+    <div class="meta-head">
+      <span class="label" id="metaTitle">Meta do mês</span>
+      <span class="pct num" id="pct">0%</span>
+    </div>
+    <div class="track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="track"><div class="fill" id="fill"></div></div>
+    <div class="hint num" id="metaInfo">Defina uma meta para acompanhar.</div>
+    <form class="row" id="formMeta" autocomplete="off">
+      <div class="prefix"><span>R$</span><input type="text" id="meta" inputmode="decimal" placeholder="Meta de gastos" aria-label="Meta de gastos do mês"></div>
+      <button class="btn ghost" type="submit">Salvar</button>
+    </form>
+  </section>
+
+  <section class="panel" aria-labelledby="chartTitle">
+    <div class="nav">
+      <button type="button" class="navbtn" id="prevAno" aria-label="Ano anterior">‹</button>
+      <span class="label" id="chartTitle">Gasto por mês em <span id="anoLabel" class="num"></span></span>
+      <button type="button" class="navbtn" id="nextAno" aria-label="Próximo ano">›</button>
+    </div>
+    <svg class="chart" id="chart" viewBox="0 0 360 190" role="img" aria-label="Gráfico de barras com o total gasto em cada mês"></svg>
+  </section>
+
+  <section class="panel" aria-labelledby="listTitle">
+    <span class="label" id="listTitle">Lançamentos do mês</span>
+    <ul id="lista"></ul>
+  </section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+// ===== Configuração =====
+// Dia em que a fatura fecha. 1 = mês calendário. Se for 10, compras a partir do dia 10 entram na fatura do mês seguinte.
+const DIA_FECHAMENTO = 1;
+
+// ===== Supabase (projeto compartilhado) =====
+// Use SOMENTE a chave publicável/anon. A chave secreta nunca deve ficar no front.
+const SUPABASE_URL = "https://wehxklmujkjwhcaofesd.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable__QQ1JlP1c2iy6sZEIkIXpQ_ZcV2Wvl_";
+
+// ===== Camada de dados (Supabase) =====
+// Tudo que o app lê/grava passa por aqui. As assinaturas continuam iguais:
+// list, add, remove, removeGrupo, getMetas, setMeta.
+const Store = (() => {
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  let onChange = null;
+  const ok = r => { if (r.error) throw r.error; return r.data; };
+
+  return {
+    // liga o "recarregar" e escuta mudanças em tempo real (útil p/ os dois celulares)
+    onReady(cb) {
+      onChange = cb;
+      sb.channel("cartao")
+        .on("postgres_changes", { event: "*", schema: "public", table: "cartao_lancamentos" }, () => onChange && onChange())
+        .on("postgres_changes", { event: "*", schema: "public", table: "cartao_metas" },       () => onChange && onChange())
+        .subscribe();
+    },
+
+    async list() {                                   // [{id, valor, criado_em, parcela?, grupo?}]
+      const rows = ok(await sb.from("cartao_lancamentos").select("id,descricao,valor,criado_em,parcela,grupo"));
+      return rows.map(r => ({ ...r, valor: Number(r.valor) }));
+    },
+    async add(itens) {                               // [{valor, criado_em, parcela?, grupo?}]
+      const rows = itens.map(i => ({
+        descricao: i.descricao ?? null,
+        valor: i.valor,
+        criado_em: i.criado_em,
+        parcela: i.parcela ?? null,
+        grupo: i.grupo ?? null,
+      }));
+      ok(await sb.from("cartao_lancamentos").insert(rows));
+    },
+    async removeGrupo(g) { ok(await sb.from("cartao_lancamentos").delete().eq("grupo", g)); },
+    async remove(id)     { ok(await sb.from("cartao_lancamentos").delete().eq("id", id)); },
+
+    async getMetas() {                               // { "2026-11": 4500 }
+      const rows = ok(await sb.from("cartao_metas").select("mes,valor"));
+      const m = {};
+      rows.forEach(r => { m[r.mes] = Number(r.valor); });
+      return m;
+    },
+    async setMeta(mes, valor) {
+      ok(await sb.from("cartao_metas")
+        .upsert({ mes, valor, atualizado_em: new Date().toISOString() }, { onConflict: "mes" }));
+    },
+  };
+})();
+
+// ===== Utilidades =====
+const brl = v => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const MESES = ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
+const MESES_LONGO = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+const $ = id => document.getElementById(id);
+
+// Chave "AAAA-MM" da fatura à qual uma data pertence
+function faturaKey(date) {
+  let y = date.getFullYear(), m = date.getMonth();
+  if (DIA_FECHAMENTO > 1 && date.getDate() >= DIA_FECHAMENTO) { m++; if (m > 11) { m = 0; y++; } }
+  return y + "-" + String(m + 1).padStart(2, "0");
+}
+function parseValor(s) {
+  s = String(s).trim().replace(/\s/g, "").replace(/^R\$/i, "");
+  if (!s) return NaN;
+  if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
+  const n = parseFloat(s);
+  return isFinite(n) ? Math.round(n * 100) / 100 : NaN;
+}
+// verde (0%) > amarelo (60%) > vermelho (100%)
+function corProgresso(p) {
+  p = Math.min(Math.max(p, 0), 1);
+  const h = p <= 0.6 ? 140 - 92 * (p / 0.6) : 48 - 48 * ((p - 0.6) / 0.4);
+  return "hsl(" + h.toFixed(0) + " 72% 42%)";
+}
+
+// ===== Tela =====
+let viewKey = null; // mês da fatura sendo visualizado (null = atual)
+function setView(k) {
+  viewKey = k;
+  confirmando = null; $("meta").value = "";
+  render();
+}
+function shift(n) {
+  const [y, m] = viewKey.split("-").map(Number), d = new Date(y, m - 1 + n, 1);
+  setView(d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"));
+}
+async function render() {
+  const [lancs, metas] = await Promise.all([Store.list(), Store.getMetas()]);
+  const agora = new Date(), atual = faturaKey(agora);
+  if (!viewKey) viewKey = atual;
+  const chave = viewKey;
+  const porMes = {};
+  lancs.forEach(l => { const k = faturaKey(new Date(l.criado_em)); porMes[k] = (porMes[k] || 0) + l.valor; });
+  const total = porMes[chave] || 0;
+  const [ano, mes] = chave.split("-").map(Number);
+
+  $("mesLabel").textContent = "Fatura de " + MESES_LONGO[mes - 1] + (ano !== agora.getFullYear() ? " " + ano : "");
+  $("anoLabel").textContent = ano;
+  $("total").textContent = brl(total);
+  $("periodo").textContent = DIA_FECHAMENTO > 1
+    ? "Fecha no dia " + DIA_FECHAMENTO
+    : "De 1 a " + new Date(ano, mes, 0).getDate() + " de " + MESES_LONGO[mes - 1];
+
+  // meta
+  const meta = metas[chave] || 0;
+  const fill = $("fill");
+  if (meta > 0) {
+    const p = total / meta;
+    fill.style.width = Math.min(p, 1) * 100 + "%";
+    fill.style.backgroundColor = corProgresso(p);
+    $("pct").textContent = Math.round(p * 100) + "%";
+    $("track").setAttribute("aria-valuenow", Math.round(Math.min(p, 1) * 100));
+    $("metaInfo").innerHTML = p > 1
+      ? '<span class="warn">Meta ultrapassada em ' + brl(total - meta) + "</span>"
+      : "Restam " + brl(meta - total) + " de " + brl(meta);
+    if (document.activeElement !== $("meta")) $("meta").value = meta.toFixed(2).replace(".", ",");
+  } else {
+    fill.style.width = "0"; $("pct").textContent = "0%";
+    $("metaInfo").textContent = "Defina uma meta para acompanhar.";
+  }
+
+  desenhaGrafico(porMes, ano, chave);
+  desenhaLista(lancs, chave);
+}
+
+function desenhaGrafico(porMes, ano, sel) {
+  // janeiro a dezembro do ano visualizado
+  const meses = [];
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(ano, i, 1);
+    const k = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+    meses.push({ k, m: d.getMonth(), v: porMes[k] || 0, atual: k === sel });
+  }
+  const max = Math.max(...meses.map(x => x.v), 1);
+  const W = 360, top = 22, base = 160, h = base - top, slot = W / 12, bw = slot * 0.62;
+  let s = '<line class="grid" x1="0" x2="' + W + '" y1="' + base + '" y2="' + base + '"/>';
+  meses.forEach((x, i) => {
+    s += '<rect class="hit" data-k="' + x.k + '" x="' + (i * slot).toFixed(1) + '" y="0" width="' + slot.toFixed(1) + '" height="' + (base + 22) + '" fill="transparent"/>';
+    const bh = x.v > 0 ? Math.max(h * x.v / max, 2) : 0, cx = i * slot + slot / 2;
+    if (bh) s += '<rect x="' + (cx - bw / 2).toFixed(1) + '" y="' + (base - bh).toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + bh.toFixed(1) + '" rx="3" fill="' + (x.atual ? "var(--bar-now)" : "var(--bar)") + '"/>';
+    s += '<text x="' + cx.toFixed(1) + '" y="' + (base + 16) + '" text-anchor="middle"' + (x.atual ? ' class="val"' : "") + ">" + MESES[x.m] + "</text>";
+    if (x.v > 0 && (x.atual || x.v === max)) {
+      const t = x.v >= 1000 ? (x.v / 1000).toFixed(1).replace(".", ",") + " mil" : Math.round(x.v);
+      s += '<text class="val" x="' + Math.min(Math.max(cx, 18), W - 18).toFixed(1) + '" y="' + (base - bh - 6).toFixed(1) + '" text-anchor="middle">' + t + "</text>";
+    }
+  });
+  $("chart").innerHTML = s;
+  $("chart").querySelectorAll(".hit").forEach(r => r.addEventListener("click", () => setView(r.dataset.k)));
+}
+
+let confirmando = null;
+function desenhaLista(lancs, chave) {
+  const doMes = lancs.filter(l => faturaKey(new Date(l.criado_em)) === chave)
+    .sort((a, b) => new Date(b.criado_em) - new Date(a.criado_em));
+  const ul = $("lista");
+  ul.innerHTML = "";
+  if (!doMes.length) { ul.innerHTML = '<li class="empty">Nenhuma compra lançada neste mês.</li>'; return; }
+  doMes.forEach(l => {
+    const d = new Date(l.criado_em);
+    const li = document.createElement("li");
+    const dia = String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0");
+    const hora = String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+    const info = document.createElement("span");
+    info.className = "info";
+    if (l.descricao) {
+      const t = document.createElement("span");
+      t.className = "desc";
+      t.textContent = l.descricao;
+      info.appendChild(t);
+    }
+    const sub = document.createElement("span");
+    sub.className = "d num";
+    sub.textContent = dia + " · " + hora + (l.parcela ? " · parcela " + l.parcela : "");
+    info.appendChild(sub);
+    const rv = document.createElement("span");
+    rv.className = "r";
+    rv.innerHTML = '<span class="v num">' + brl(l.valor) + "</span>";
+    li.append(info, rv);
+    const botao = (texto, key, acao, rotulo) => {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "del"; b.textContent = texto; b.setAttribute("aria-label", rotulo);
+      if (confirmando === key) { b.textContent = "Confirmar?"; b.classList.add("sure"); }
+      b.onclick = async () => {
+        if (confirmando === key) { confirmando = null; await acao(); render(); }
+        else { confirmando = key; render(); setTimeout(() => { if (confirmando === key) { confirmando = null; render(); } }, 4000); }
+      };
+      return b;
+    };
+    const r = li.querySelector(".r");
+    r.appendChild(botao("Excluir", l.id, () => Store.remove(l.id), "Excluir compra de " + brl(l.valor)));
+    if (l.grupo) r.appendChild(botao("Todas", "g:" + l.grupo, () => Store.removeGrupo(l.grupo), "Excluir todas as parcelas desta compra"));
+    ul.appendChild(li);
+  });
+}
+
+// ===== Eventos =====
+$("formAdd").addEventListener("submit", async e => {
+  e.preventDefault();
+  const v = parseValor($("valor").value);
+  if (!(v > 0)) { $("valor").focus(); return; }
+  const desc = $("descricao").value.trim();
+  // uma linha por parcela, no mesmo dia dos meses seguintes (ajustado ao tamanho do mês)
+  const n = Math.min(Math.max(parseInt($("parcelas").value, 10) || 1, 1), 48);
+  const base = new Date(), grupo = n > 1 ? "g" + Date.now().toString(36) : undefined, itens = [];
+  for (let i = 0; i < n; i++) {
+    const d = new Date(base.getFullYear(), base.getMonth() + i, 1, base.getHours(), base.getMinutes(), base.getSeconds());
+    d.setDate(Math.min(base.getDate(), new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()));
+    const it = { valor: v, descricao: desc || null, criado_em: d.toISOString() };
+    if (n > 1) { it.parcela = (i + 1) + "/" + n; it.grupo = grupo; }
+    itens.push(it);
+  }
+  await Store.add(itens);
+  $("valor").value = ""; $("descricao").value = ""; $("parcelas").value = "1"; atualizaParc();
+  setView(faturaKey(new Date())); // compra nova sempre cai no mês atual
+});
+$("formMeta").addEventListener("submit", async e => {
+  e.preventDefault();
+  const v = parseValor($("meta").value);
+  if (!(v > 0)) { $("meta").focus(); return; }
+  await Store.setMeta(viewKey || faturaKey(new Date()), v);
+  $("meta").blur();
+  render();
+});
+function atualizaParc() {
+  const v = parseValor($("valor").value), n = Math.min(Math.max(parseInt($("parcelas").value, 10) || 1, 1), 48);
+  $("parcInfo").textContent = n <= 1 ? "Compra à vista. Para parcelar, informe o valor de cada parcela."
+    : v > 0 ? n + "x de " + brl(v) + " = " + brl(v * n) + ", uma por mês" : n + " parcelas: informe o valor de cada uma";
+}
+$("valor").addEventListener("input", atualizaParc);
+$("parcelas").addEventListener("input", atualizaParc);
+function shiftAno(n) { const [y, m] = viewKey.split("-"); setView((Number(y) + n) + "-" + m); }
+$("prevAno").addEventListener("click", () => shiftAno(-1));
+$("nextAno").addEventListener("click", () => shiftAno(1));
+$("prev").addEventListener("click", () => shift(-1));
+$("next").addEventListener("click", () => shift(1));
+
+render();
+Store.onReady(render);
+
+// Registro do Service Worker (PWA instalável).
+// Só funciona servido por HTTPS (GitHub Pages/Netlify). Ignorado, sem erro, se aberto via file://
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  });
+}
+</script>
+</body>
+</html>
