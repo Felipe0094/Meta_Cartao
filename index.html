@@ -174,8 +174,10 @@ li .desc { font-weight: 600; overflow-wrap: anywhere; }
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 // ===== Configuração =====
-// Dia em que a fatura fecha. 1 = mês calendário. Se for 10, compras a partir do dia 10 entram na fatura do mês seguinte.
-const DIA_FECHAMENTO = 1;
+// Dia em que a fatura fecha. 28 = o ciclo de compras vai do dia 28 de um mês até o dia 27 do mês seguinte.
+// Ex.: a "Fatura de dezembro" agrupa as compras de 28 de outubro a 27 de novembro (fecha em 28/nov).
+// Use 1 para agrupar pelo mês calendário (1 a 30/31).
+const DIA_FECHAMENTO = 28;
 
 // ===== Supabase (projeto compartilhado) =====
 // Use SOMENTE a chave publicável/anon. A chave secreta nunca deve ficar no front.
@@ -237,22 +239,27 @@ const MESES_LONGO = ["janeiro","fevereiro","março","abril","maio","junho","julh
 const $ = id => document.getElementById(id);
 
 // Chave "AAAA-MM" da fatura à qual uma data pertence.
-// A fatura é identificada pelo mês do SEU VENCIMENTO = ciclo de compras + 1 mês.
-// Ex.: compras de 1 a 30/31 de novembro formam a "Fatura de dezembro".
+// A fatura é identificada pelo mês do SEU VENCIMENTO.
+// Com fechamento no dia 28: compras do dia 28 em diante já entram na fatura seguinte.
 function faturaKey(date) {
   let y = date.getFullYear(), m = date.getMonth();
   if (DIA_FECHAMENTO > 1 && date.getDate() >= DIA_FECHAMENTO) { m++; if (m > 11) { m = 0; y++; } }
   m++; if (m > 11) { m -= 12; y++; }             // vencimento = ciclo + 1 mês
   return y + "-" + String(m + 1).padStart(2, "0");
 }
-// Intervalo do ciclo de compras que forma uma fatura (o mês anterior ao vencimento).
-// Retorna { ano, mes (1-based), ultimoDia }.
+// Intervalo de compras que forma a fatura.
+// Com fechamento (DIA_FECHAMENTO > 1): do dia do fechamento do mês anterior até a véspera do fechamento.
+// Ex.: "2025-12" -> 28/out a 27/nov. Retorna { anoIni, mesIni, diaIni, anoFim, mesFim, diaFim }.
 function cicloDaFatura(chave) {
   const [anoF, mesF] = chave.split("-").map(Number);
-  let mes = mesF - 1, ano = anoF;
-  if (mes < 1) { mes = 12; ano = anoF - 1; }
-  const ultimoDia = new Date(ano, mes, 0).getDate();
-  return { ano, mes, ultimoDia };
+  let mesFim = mesF - 1, anoFim = anoF;          // mês do fechamento = vencimento - 1
+  if (mesFim < 1) { mesFim = 12; anoFim = anoF - 1; }
+  if (DIA_FECHAMENTO > 1) {
+    let mesIni = mesFim - 1, anoIni = anoFim;
+    if (mesIni < 1) { mesIni = 12; anoIni = anoFim - 1; }
+    return { anoIni, mesIni, diaIni: DIA_FECHAMENTO, anoFim, mesFim, diaFim: DIA_FECHAMENTO - 1 };
+  }
+  return { anoIni: anoFim, mesIni: mesFim, diaIni: 1, anoFim, mesFim, diaFim: new Date(anoFim, mesFim, 0).getDate() };
 }
 function parseValor(s) {
   s = String(s).trim().replace(/\s/g, "").replace(/^R\$/i, "");
@@ -299,12 +306,11 @@ async function render() {
   $("mesLabel").textContent = "Fatura de " + MESES_LONGO[mes - 1] + (ano !== agora.getFullYear() ? " " + ano : "");
   $("anoLabel").textContent = ano;
   $("total").textContent = brl(total);
-  if (DIA_FECHAMENTO > 1) {
-    $("periodo").textContent = "Fecha no dia " + DIA_FECHAMENTO;
-  } else {
-    const ciclo = cicloDaFatura(chave);
-    $("periodo").textContent = "De 1 a " + ciclo.ultimoDia + " de " + MESES_LONGO[ciclo.mes - 1];
-  }
+
+  const ciclo = cicloDaFatura(chave);
+  $("periodo").textContent = DIA_FECHAMENTO > 1
+    ? "De " + ciclo.diaIni + " de " + MESES_LONGO[ciclo.mesIni - 1] + " a " + ciclo.diaFim + " de " + MESES_LONGO[ciclo.mesFim - 1]
+    : "De 1 a " + ciclo.diaFim + " de " + MESES_LONGO[ciclo.mesFim - 1];
 
   // meta
   const meta = metas[chave] || 0;
@@ -408,12 +414,13 @@ $("formAdd").addEventListener("submit", async e => {
   const n = Math.min(Math.max(parseInt($("parcelas").value, 10) || 1, 1), 48);
   // fatura em que a compra será lançada: a que está sendo visualizada (permite lançamento retroativo)
   const chave = viewKey || faturaKey(new Date());
-  // as compras que formam essa fatura pertencem ao mês anterior (o ciclo); posiciona a data no ciclo
   const ciclo = cicloDaFatura(chave);
   const agora = new Date();
-  const dia = Math.min(agora.getDate(), ciclo.ultimoDia);
-  let base = new Date(ciclo.ano, ciclo.mes - 1, dia, agora.getHours(), agora.getMinutes(), agora.getSeconds());
-  if (faturaKey(base) !== chave) base = new Date(ciclo.ano, ciclo.mes - 1, 1, agora.getHours(), agora.getMinutes(), agora.getSeconds());
+  // se hoje já pertence a esta fatura, mantém a data de hoje; senão ancora no início do ciclo
+  let base = faturaKey(agora) === chave
+    ? new Date(agora)
+    : new Date(ciclo.anoIni, ciclo.mesIni - 1, ciclo.diaIni, agora.getHours(), agora.getMinutes(), agora.getSeconds());
+  if (faturaKey(base) !== chave) base = new Date(ciclo.anoIni, ciclo.mesIni - 1, ciclo.diaIni, 12, 0, 0);
   const grupo = n > 1 ? "g" + Date.now().toString(36) : undefined, itens = [];
   for (let i = 0; i < n; i++) {
     const d = new Date(base.getFullYear(), base.getMonth() + i, 1, base.getHours(), base.getMinutes(), base.getSeconds());
