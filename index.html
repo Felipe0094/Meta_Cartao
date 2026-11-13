@@ -236,11 +236,23 @@ const MESES = ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov"
 const MESES_LONGO = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
 const $ = id => document.getElementById(id);
 
-// Chave "AAAA-MM" da fatura à qual uma data pertence
+// Chave "AAAA-MM" da fatura à qual uma data pertence.
+// A fatura é identificada pelo mês do SEU VENCIMENTO = ciclo de compras + 1 mês.
+// Ex.: compras de 1 a 30/31 de novembro formam a "Fatura de dezembro".
 function faturaKey(date) {
   let y = date.getFullYear(), m = date.getMonth();
   if (DIA_FECHAMENTO > 1 && date.getDate() >= DIA_FECHAMENTO) { m++; if (m > 11) { m = 0; y++; } }
+  m++; if (m > 11) { m -= 12; y++; }             // vencimento = ciclo + 1 mês
   return y + "-" + String(m + 1).padStart(2, "0");
+}
+// Intervalo do ciclo de compras que forma uma fatura (o mês anterior ao vencimento).
+// Retorna { ano, mes (1-based), ultimoDia }.
+function cicloDaFatura(chave) {
+  const [anoF, mesF] = chave.split("-").map(Number);
+  let mes = mesF - 1, ano = anoF;
+  if (mes < 1) { mes = 12; ano = anoF - 1; }
+  const ultimoDia = new Date(ano, mes, 0).getDate();
+  return { ano, mes, ultimoDia };
 }
 function parseValor(s) {
   s = String(s).trim().replace(/\s/g, "").replace(/^R\$/i, "");
@@ -254,6 +266,13 @@ function corProgresso(p) {
   p = Math.min(Math.max(p, 0), 1);
   const h = p <= 0.6 ? 140 - 92 * (p / 0.6) : 48 - 48 * ((p - 0.6) / 0.4);
   return "hsl(" + h.toFixed(0) + " 72% 42%)";
+}
+// rótulo curto para caber sobre a barra: 970 -> "970" · 1.240 -> "1,2 mil" · 12.400 -> "12 mil" · 1.240.000 -> "1,2 mi"
+function formataCurto(v) {
+  if (v >= 1000000) return (v / 1000000).toFixed(1).replace(".", ",") + " mi";
+  if (v >= 10000) return Math.round(v / 1000) + " mil";
+  if (v >= 1000) return (v / 1000).toFixed(1).replace(".", ",") + " mil";
+  return String(Math.round(v));
 }
 
 // ===== Tela =====
@@ -280,9 +299,12 @@ async function render() {
   $("mesLabel").textContent = "Fatura de " + MESES_LONGO[mes - 1] + (ano !== agora.getFullYear() ? " " + ano : "");
   $("anoLabel").textContent = ano;
   $("total").textContent = brl(total);
-  $("periodo").textContent = DIA_FECHAMENTO > 1
-    ? "Fecha no dia " + DIA_FECHAMENTO
-    : "De 1 a " + new Date(ano, mes, 0).getDate() + " de " + MESES_LONGO[mes - 1];
+  if (DIA_FECHAMENTO > 1) {
+    $("periodo").textContent = "Fecha no dia " + DIA_FECHAMENTO;
+  } else {
+    const ciclo = cicloDaFatura(chave);
+    $("periodo").textContent = "De 1 a " + ciclo.ultimoDia + " de " + MESES_LONGO[ciclo.mes - 1];
+  }
 
   // meta
   const meta = metas[chave] || 0;
@@ -304,14 +326,6 @@ async function render() {
 
   desenhaGrafico(porMes, ano, chave);
   desenhaLista(lancs, chave);
-}
-
-// rótulo curto para caber sobre a barra: 970 -> "970" · 1.240 -> "1,2 mil" · 12.400 -> "12 mil" · 1.240.000 -> "1,2 mi"
-function formataCurto(v) {
-  if (v >= 1000000) return (v / 1000000).toFixed(1).replace(".", ",") + " mi";
-  if (v >= 10000) return Math.round(v / 1000) + " mil";
-  if (v >= 1000) return (v / 1000).toFixed(1).replace(".", ",") + " mil";
-  return String(Math.round(v));
 }
 
 function desenhaGrafico(porMes, ano, sel) {
@@ -392,13 +406,14 @@ $("formAdd").addEventListener("submit", async e => {
   const desc = $("descricao").value.trim();
   // uma linha por parcela, no mesmo dia dos meses seguintes (ajustado ao tamanho do mês)
   const n = Math.min(Math.max(parseInt($("parcelas").value, 10) || 1, 1), 48);
-  // mês da fatura em que a compra será lançada: o mês que está sendo visualizado (permite lançamento retroativo)
+  // fatura em que a compra será lançada: a que está sendo visualizada (permite lançamento retroativo)
   const chave = viewKey || faturaKey(new Date());
-  const [ano, mes] = chave.split("-").map(Number);
-  // base no mês visualizado; usa o dia de hoje se ele cair na mesma fatura, senão o dia 1
+  // as compras que formam essa fatura pertencem ao mês anterior (o ciclo); posiciona a data no ciclo
+  const ciclo = cicloDaFatura(chave);
   const agora = new Date();
-  let base = new Date(ano, mes - 1, agora.getDate(), agora.getHours(), agora.getMinutes(), agora.getSeconds());
-  if (faturaKey(base) !== chave) base = new Date(ano, mes - 1, 1, agora.getHours(), agora.getMinutes(), agora.getSeconds());
+  const dia = Math.min(agora.getDate(), ciclo.ultimoDia);
+  let base = new Date(ciclo.ano, ciclo.mes - 1, dia, agora.getHours(), agora.getMinutes(), agora.getSeconds());
+  if (faturaKey(base) !== chave) base = new Date(ciclo.ano, ciclo.mes - 1, 1, agora.getHours(), agora.getMinutes(), agora.getSeconds());
   const grupo = n > 1 ? "g" + Date.now().toString(36) : undefined, itens = [];
   for (let i = 0; i < n; i++) {
     const d = new Date(base.getFullYear(), base.getMonth() + i, 1, base.getHours(), base.getMinutes(), base.getSeconds());
